@@ -35,6 +35,13 @@ class Game(object):
     def get_best(self, letters, top_k=10, threshold=5):
         return self.tree_search.get_candidates(letters, self.board, top_k, threshold)
 
+    def get_best_first_move(self, letters, top_k=10, threshold=5):
+        return self.tree_search.get_candidates_for_first_move(7, letters, self.board, top_k=top_k, threshold=threshold)
+
+    def play(self, word, r=None, c=None, vertical=None, force=False):
+        self.board.play(word, r, c, vertical, force)
+        print str(self.board)
+
     def is_word(self, word):
         return self.tree_search.is_word(word.upper())
 

@@ -10,9 +10,10 @@ class Board(object):
         self.special_spaces = special_spaces
 
     def __repr__(self):
-        header = '    ' +  ' '.join([self._get_rc_label(r) for r in xrange(self.num_cols)])
-        line = '  +%s+' % ('-' * (len(header)- 2))
-        return "\n".join([header, line] + [" ".join([self._get_rc_label(r), '|'] + [c for c in row] + ['|']) for r, row in enumerate(self.rows)] + [line])
+        header = '    ' + ' '.join([self._get_rc_label(r) for r in xrange(self.num_cols)])
+        line = '  +%s+' % ('-' * (len(header) - 2))
+        return "\n".join([header, line] + [" ".join([self._get_rc_label(r), '|'] + [c for c in row] + ['|'])
+                                           for r, row in enumerate(self.rows)] + [line])
 
     def copy(self):
         new_rows = [list(row) for row in self.rows]
@@ -111,22 +112,130 @@ class Board(object):
                 copy.rows[r][c] = self.rows[c][r]
         return copy
 
-    # def overlay_letters(self, board_text, tile_source, force=False):
-    #     if not self.spaces:
-    #         raise RuntimeError("Cannot overlay letter because this board doesn't have any spaces.")
-    #     rows = [line for line in board_text.splitlines() if line.strip()]
-    #     #print "rows=%s" % rows
-    #     for r, raw_row in enumerate(rows):
-    #         #print "r=%s" % r
-    #         row = raw_row.replace(' ', '')
-    #         for c, char in enumerate(row):
-    #             space = self.spaces[r][c]
-    #             if char.isalpha():
-    #                 if not tile_source:
-    #                     raise RuntimeError("Encountered some letters, need a tile source to create this board properly; tile_source is None")
-    #                 tile = tile_source.remove(char)
-    #                 if not force and not space.is_empty():
-    #                     raise RuntimeError("Space %s, %s is not empty: %s" % (r, c, space.display()))
-    #                 space.tile = tile
-    #             elif char != '`':
-    #                 raise ValueError("Unrecognized character in board text: %s" % char)
+    def overlay(self, overlay_text, force=False):
+        if not self.rows:
+            raise RuntimeError("Cannot overlay letter because this board doesn't have any rows.")
+        rows = []
+        for raw_line in overlay_text.splitlines():
+            line = raw_line.replace(' ', '')
+            line = line.strip()
+            if line:
+                # ignore repr markup
+                if line.startswith('01') or line.startswith('+-'):
+                    continue
+                if line[1] == '|':
+                    line = line[1:]
+                line = line.strip('|').upper()
+                new_line_chars = []
+                r = len(rows)
+                for c, char in enumerate(line):
+                    if char.isalpha():
+                        if self.rows[r][c].isalpha() and not force:
+                            raise RuntimeError("Space %s,%s not empty: %s.  Try force option" % (r, c, self.rows[r][c]))
+                        new_line_chars.append(char)
+                    elif char == '`':
+                        new_line_chars.append(self.rows[r][c])
+                    else:
+                        raise ValueError("Unrecognized character in overaly text: %s" % char)
+
+                if len(new_line_chars) != len(self.rows[r]):
+                    raise RuntimeError("Not enough columns in row %s to overlay properly" % r)
+                rows.append(''.join(new_line_chars))
+
+        if len(rows) != len(self.rows):
+            raise RuntimeError("Not enough rows to overlay properly")
+
+        self.rows = rows
+
+    def play(self, word, r=None, c=None, vertical=None, force=False):
+        if isinstance(word, tuple):
+            vertical = word[4] == 'v'
+            c = word[3]
+            r = word[2]
+            word = word[0]
+        else:
+            if r is None or c is None or vertical is None:
+                raise RuntimeError("Bad arguments given to play()")
+            if vertical == 'h':
+                vertical = False
+
+        def get_err():
+            return RuntimeError("The word '%s' doesn't fit %s at %s,%s" % (word,
+                                                                           "vertically" if vertical else "horizontally",
+                                                                           r,
+                                                                           c))
+
+        def play_row(board, r_index, c_index):
+            board_row = ''.join(board.rows[r_index])
+            new_row = board_row[:c_index] + word + board_row[c_index + len(word):]
+
+            if len(new_row) != len(board_row):
+                raise get_err()
+
+            if not force:
+                for i, char in enumerate(board_row):
+                    if char.isalpha() and new_row[i] != char:
+                        raise get_err()
+            return new_row
+
+        if vertical:
+            transposed = self.transposed()
+            vertical_row = play_row(transposed, c, r)
+            transposed.rows[c] = vertical_row
+            self.rows = transposed.transposed().rows
+        else:
+            self.rows[r] = play_row(self, r, c)
+
+        self.validate()
+
+    def validate(self):
+        """Makes sure all the words are connected and that the tile bag is honored"""
+        rows = self.copy().rows
+
+        # look for first letter
+        start_r, start_c = None, None
+        for r, row in enumerate(rows):
+            for c, char in enumerate(row):
+                if char.isalpha():
+                    start_r, start_c = r, c
+                    break
+            if start_r is not None:
+                break
+
+        if start_r is None:
+            return True  # Empty Board!
+
+        NOWHERE = -1
+        LEFT = 0
+        RIGHT = 1
+        UP = 2
+        DOWN = 3
+        MARKER = '~'
+
+        def walker(rows, enter_from, r, c):
+            if rows[r][c].isalpha():
+                rows[r][c] = MARKER
+                # add letter to tile bags...
+            else:
+                return  # not a letter
+
+            if enter_from != LEFT and c > 0:
+                walker(rows, RIGHT, r, c - 1)
+            if enter_from != RIGHT and c < len(rows[r])-1:
+                walker(rows, LEFT, r, c + 1)
+            if enter_from != UP and r > 0:
+                walker(rows, DOWN, r - 1, c)
+            if enter_from != DOWN and r < len(rows)-1:
+                walker(rows, UP, r + 1, c)
+
+        # start traversal
+        walker(rows, NOWHERE, start_r, start_c)
+
+        # start over a see if any letter remain
+        for r, row in enumerate(rows):
+            for c, char in enumerate(row):
+                if char.isalpha():
+                    raise RuntimeError("Board is not fully connected.  Look at '%s' at position %s, %s" % (char, r, c))
+
+        # Secondly - tile counts are appropriate
+        # todo: count the letter

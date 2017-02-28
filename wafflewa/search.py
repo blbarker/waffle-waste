@@ -6,10 +6,10 @@ class Candidates(object):
         self.threshold = threshold
         self.top_k = top_k
 
-    def consider(self, word, score, require_crossword=False):
-        if not score.crossword_points and require_crossword:
+    def consider(self, word, score, require_attached=False):
+        if not score.attached and require_attached:
             # this makes sure that the word actually connects to another on the board
-            # todo: fix broken corner case of all-blank crossword
+            # todo: fix broken corner case of an all-blank crossword
             return
         points = score.get_points()
         if points < self.threshold:
@@ -111,20 +111,33 @@ class Search(object):
                 answer = self.merge_plays(answer, plays, 10)
         return answer
 
-    def get_candidates_for_space(self, letters_string, board_series, series_index, top_k=10, threshold=5):
+    def get_candidates_for_first_move(self, start_index, letters_string, board, top_k=10, threshold=5):
+        def get_h(word, points, r, c):
+            return word, points, r, c, 'h'
+        get_play = get_h
+        answer = []
+        series = board.get_row_series(start_index)
+        for c in xrange(len(series.line)):
+            pairs = self.get_candidates_for_space(letters_string, series, c, top_k, threshold, require_attached=False)
+            plays = [get_play(word, points, start_index, c) for word, points in pairs if
+                     (c == start_index or (c < start_index and (c + len(word)) > start_index))]
+            answer = self.merge_plays(answer, plays, 10)
+        return answer
+
+    def get_candidates_for_space(self, letters_string, board_series, series_index, top_k=10, threshold=5, require_attached=True):
         candidates = Candidates(top_k=top_k, threshold=threshold)
         series = board_series
 
         def go(node, word, score, remaining_letters, index):
             if node.terminal and series.word_can_end(index):
-                candidates.consider(word, score, require_crossword=True)
+                candidates.consider(word, score, require_attached=require_attached)
             space = series.get_space(index)
             if node.kids and space:
                 if space.isalpha():
                     required_letter = space.upper()
                     if required_letter in node.kids:
                         if space.isupper():  # check that it is not a blank, represented by lowercase
-                            score.add(space)
+                            score.add(space, attached=True)
                         go(node.kids[required_letter],
                            word + required_letter,
                            score,
@@ -132,12 +145,19 @@ class Search(object):
                            index + 1)
                 elif remaining_letters:
                     for i, letter in enumerate(remaining_letters):
-                        if letter in node.kids:
+                        is_blank = letter == ' '
+                        if is_blank:
+                            choices = node.kids.keys()
+                        elif letter in node.kids:
+                            choices = [letter]
+                        else:
+                            choices = []
+                        for choice in choices:
                             cross = series.get_cross(index)
-                            crossword_points = self.check_crossword(letter, space, cross)
+                            crossword_points = self.check_crossword(choice, space, cross)
                             if crossword_points is not None:
-                                go(node.kids[letter],
-                                   word + letter,
+                                go(node.kids[choice],
+                                   word + (choice.lower() if is_blank else choice),
                                    score.copy_and_add(letter, space, crossword_points),
                                    remaining_letters[:i] + remaining_letters[i+1:],
                                    index + 1)

@@ -1,6 +1,7 @@
 from wafflewa.space import *
 
 rack_capacity = 7
+points_for_bingo = 40
 
 tile_tuples = [
     ('a', 1, 9),
@@ -121,6 +122,8 @@ class Score(object):
         self.word_points = 0
         self.crossword_points = 0
         self.word_multipliers = []
+        self.bingo_count = 0
+        self.attached = False
 
     def __repr__(self):
         return str(self.get_points())
@@ -128,6 +131,7 @@ class Score(object):
     def clear(self):
         self.word_points = 0
         self.crossword_points = 0
+        self.attached = False
         del self.word_multipliers[:]
 
     def copy(self):
@@ -135,15 +139,20 @@ class Score(object):
         s.word_points = self.word_points
         s.crossword_points = self.crossword_points
         s.word_multipliers = list(self.word_multipliers) if self.word_multipliers else []
+        s.bingo_count = self.bingo_count
+        s.attached = self.attached
         return s
 
-    def copy_and_add(self, letter, space_char, crossword_points=0):
+    def copy_and_add(self, letter, space_char, crossword_points=0, attached=False):
         s = self.copy()
         s.add(letter, space_char)
         s.crossword_points += crossword_points
+        s.bingo_count += 1
+        if attached or crossword_points > 0:
+            self.attached = True
         return s
 
-    def add(self, letter, space_char=DISPLAY_EMPTY):
+    def add(self, letter, space_char=DISPLAY_EMPTY, attached=False):
         letter_points = 0 if letter.islower() else points[letter]  # lowercase means BLANK
         if space_char == DISPLAY_EMPTY:
             self.word_points += letter_points
@@ -159,10 +168,14 @@ class Score(object):
             self.word_multipliers.append(3)
         else:
             raise RuntimeError('Unexpected space character %s' % space_char)
+        if attached:
+            self.attached = True
 
     def get_points(self):
         total = self.word_points
         for m in self.word_multipliers:
             total *= m
         total += self.crossword_points
+        if self.bingo_count >= rack_capacity:
+            total += points_for_bingo
         return total
