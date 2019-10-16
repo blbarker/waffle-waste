@@ -37,8 +37,13 @@ class Series(object):
     def copy(self):
         return Series(self.line, crosses=self.crosses)
 
-    def word_can_end(self, index):
+    def word_can_start_and_end(self, word, index):
         """returns whether a word can end in the current position"""
-        return index+1 >= len(self.line) or not self.line[index+1].isalpha()
+        start_index = index - len(word)
+        can_start = (start_index == 0 or
+                     (start_index > 0
+                      and not self.line[start_index-1].isalpha()))
+        can_end = (index >= len(self.line) or (not self.line[index].isalpha()))
+        return can_start and can_end
 
 

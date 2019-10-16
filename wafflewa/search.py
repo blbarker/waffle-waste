@@ -1,4 +1,22 @@
 
+
+# note:  Regular tiles show as uppercase
+#        Blank tiles that have been played show as lowercase
+#        A blank is represent by a space character
+
+class Play(object):
+    def __init__(self, word, points, row, col, v_or_h):
+        self.word = word
+        self.points = points
+        self.row = row
+        self.col = col
+        self.v_or_h = v_or_h
+
+    def __repr__(self):
+        return '%s %dpts %s(%X,%X)' % \
+               (self.word, self.points, self.v_or_h, self.row, self.col)
+
+
 class Candidates(object):
 
     def __init__(self, top_k=10, threshold=10):
@@ -76,7 +94,7 @@ class Search(object):
         """Merges two lists of plays (destroys them), assumes points are in the second tuple position"""
         x = []
         while len(a) and len(b):
-            if b[0][1] >  a[0][1]:
+            if b[0].points >  a[0].points:
                 x.append(b.pop(0))
             else:
                 x.append(a.pop(0))
@@ -91,10 +109,10 @@ class Search(object):
 
     def get_candidates(self, letters_string, board, top_k=10, threshold=5):
         def get_h(word, points, r, c):
-            return word, points, r, c, 'h'
+            return Play(word, points, r, c, 'h')
 
         def get_v(word, points, r, c):
-            return word, points, c, r, 'v'
+            return Play(word, points, c, r, 'v')
 
         h = self._get_candidates_for_board(letters_string, board, get_h, top_k, threshold)
         v = self._get_candidates_for_board(letters_string, board.transposed(), get_v, top_k, threshold)
@@ -127,9 +145,10 @@ class Search(object):
     def get_candidates_for_space(self, letters_string, board_series, series_index, top_k=10, threshold=5, require_attached=True):
         candidates = Candidates(top_k=top_k, threshold=threshold)
         series = board_series
+        num_letters = len(letters_string)
 
         def go(node, word, score, remaining_letters, index):
-            if node.terminal and series.word_can_end(index):
+            if node.terminal and len(remaining_letters) < num_letters and series.word_can_start_and_end(word, index):
                 candidates.consider(word, score, require_attached=require_attached)
             space = series.get_space(index)
             if node.kids and space:
